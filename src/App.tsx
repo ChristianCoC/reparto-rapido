@@ -7,6 +7,7 @@ import { VehicleMap } from './components/VehicleMap';
 import { DeliveryMap } from './components/DeliveryMap';
 import { PackageList } from './components/PackageList';
 import { EndOfDayModal } from './components/EndOfDayModal';
+import { ParsedLabelData } from './utils/labelParser';
 import {
   Truck,
   ScanLine,
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'scan' | 'vehicle' | 'map' | 'list'>('scan');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scannedCode, setScannedCode] = useState<string>('');
+  const [scannedData, setScannedData] = useState<ParsedLabelData | null>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [isEndOfDayOpen, setIsEndOfDayOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -55,18 +57,21 @@ export const App: React.FC = () => {
   const handleAddPackage = (newPkg: PackageItem) => {
     setPackages((prev) => [newPkg, ...prev]);
     setScannedCode('');
+    setScannedData(null);
     setIsScannerOpen(false);
   };
 
-  // Escaneo exitoso
-  const handleScanSuccess = (code: string) => {
+  // Escaneo exitoso (con datos parseados de QR o OCR)
+  const handleScanSuccess = (code: string, parsed?: ParsedLabelData) => {
     setScannedCode(code);
+    if (parsed) {
+      setScannedData(parsed);
+    }
     setIsScannerOpen(false);
-    // Cambiar a la pestaña de carga si no está en ella
     setActiveTab('scan');
   };
 
-  // Actualizar estado de entrega (tachar / tildar)
+  // Actualizar estado de entrega
   const handleUpdateStatus = (id: string, status: DeliveryStatus, reason?: string) => {
     setPackages((prev) =>
       prev.map((pkg) => {
@@ -95,48 +100,49 @@ export const App: React.FC = () => {
     setSelectedZoneId(null);
   };
 
-  // Cargar datos de prueba de ejemplo para verificar sin paquetes físicos
+  // Cargar datos de prueba de ejemplo (incluyendo formato tipo Mercado Libre con #BD-32)
   const handleLoadDemoData = () => {
     const demoPackages: PackageItem[] = [
       {
         id: 'demo-1',
-        trackingNumber: 'ML-984210',
-        recipient: 'Martín Gómez',
-        address: 'Av. Santa Fe 3200, Palermo',
-        notes: 'Piso 4 Departamento B',
-        vehicleZoneId: 'zone-copilot',
-        status: 'pending',
-        scannedAt: new Date().toISOString(),
-        coordinates: { lat: -34.5888, lng: -58.4111 }
-      },
-      {
-        id: 'demo-2',
-        trackingNumber: 'ML-984211',
-        recipient: 'Lucía Fernández',
-        address: 'Av. Cabildo 1500, Belgrano',
-        notes: 'Dejar en recepción',
-        vehicleZoneId: 'zone-front',
-        status: 'pending',
-        scannedAt: new Date().toISOString(),
-        coordinates: { lat: -34.5678, lng: -58.4522 }
-      },
-      {
-        id: 'demo-3',
-        trackingNumber: 'ML-984212',
-        recipient: 'Carlos Rossi',
-        address: 'Av. Rivadavia 4500, Almagro',
-        vehicleZoneId: 'zone-middle',
+        trackingNumber: '#BD-32',
+        recipient: 'Adriana Castaño',
+        address: 'Calle Rivadavia 4616, CABA',
+        notes: '3er piso dpto 3',
+        vehicleZoneId: 'zone-front', // Zona B1
         status: 'pending',
         scannedAt: new Date().toISOString(),
         coordinates: { lat: -34.6189, lng: -58.4287 }
       },
       {
+        id: 'demo-2',
+        trackingNumber: '#AD-12',
+        recipient: 'Martín Gómez',
+        address: 'Av. Santa Fe 3200, Palermo',
+        notes: 'Piso 4 Departamento B',
+        vehicleZoneId: 'zone-copilot', // Zona A1
+        status: 'pending',
+        scannedAt: new Date().toISOString(),
+        coordinates: { lat: -34.5888, lng: -58.4111 }
+      },
+      {
+        id: 'demo-3',
+        trackingNumber: '#CD-05',
+        recipient: 'Lucía Fernández',
+        address: 'Av. Cabildo 1500, Belgrano',
+        notes: 'Dejar en recepción',
+        vehicleZoneId: 'zone-middle', // Zona C1
+        status: 'pending',
+        scannedAt: new Date().toISOString(),
+        coordinates: { lat: -34.5678, lng: -58.4522 }
+      },
+      {
         id: 'demo-4',
-        trackingNumber: 'ML-984213',
+        trackingNumber: '#ED-44',
         recipient: 'Sofía Díaz',
         address: 'Av. de Mayo 800, Montserrat',
         notes: 'Llamar antes al timbre',
-        vehicleZoneId: 'zone-back',
+        vehicleZoneId: 'zone-back', // Zona E1
         status: 'pending',
         scannedAt: new Date().toISOString(),
         coordinates: { lat: -34.6083, lng: -58.3794 }
@@ -167,7 +173,6 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Alternar modo oscuro */}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -176,7 +181,6 @@ export const App: React.FC = () => {
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            {/* Finalizar día / Limpiar */}
             <button
               onClick={() => setIsEndOfDayOpen(true)}
               className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 transition-colors"
@@ -187,7 +191,6 @@ export const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Barra de progreso de entregas */}
         {total > 0 && (
           <div className="max-w-md mx-auto mt-2.5">
             <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
@@ -202,13 +205,12 @@ export const App: React.FC = () => {
 
       {/* Contenido Principal */}
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* Banner para cargar datos de prueba si está vacía */}
         {packages.length === 0 && (
           <div className="bg-gradient-to-r from-brand-600 to-emerald-700 text-white p-4 rounded-2xl shadow-lg flex items-center justify-between gap-3">
             <div>
               <h3 className="font-bold text-sm">¿Quieres probar la app de inmediato?</h3>
               <p className="text-xs text-brand-100 mt-0.5">
-                Carga 4 paquetes de prueba para ver el mapa, zonas y checklist.
+                Carga 4 paquetes de ejemplo tipo Mercado Libre con etiquetas #BD-32.
               </p>
             </div>
             <button
@@ -226,12 +228,12 @@ export const App: React.FC = () => {
           <div className="space-y-4">
             <PackageForm
               initialCode={scannedCode}
+              initialData={scannedData}
               zones={zones}
               onAddPackage={handleAddPackage}
               onOpenScanner={() => setIsScannerOpen(true)}
             />
 
-            {/* Vista previa rápida de distribución en furgón */}
             {packages.length > 0 && (
               <VehicleMap
                 zones={zones}
@@ -253,9 +255,7 @@ export const App: React.FC = () => {
               zones={zones}
               packages={packages}
               selectedZoneId={selectedZoneId}
-              onSelectZone={(z) => {
-                setSelectedZoneId(z);
-              }}
+              onSelectZone={(z) => setSelectedZoneId(z)}
             />
 
             {selectedZoneId && (
@@ -329,7 +329,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Modal / Overlay del Escáner de Cámara */}
+      {/* Modal / Overlay del Escáner */}
       {isScannerOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 animate-in fade-in">
           <div className="w-full max-w-md">
@@ -350,10 +350,9 @@ export const App: React.FC = () => {
         onConfirmClear={handleClearDay}
       />
 
-      {/* Barra de Navegación Inferior Fija (Mobile Thumb Navigation) */}
+      {/* Barra de Navegación Inferior Fija */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 pb-safe">
         <div className="max-w-md mx-auto flex items-center justify-around p-2">
-          {/* Tab 1: Carga */}
           <button
             onClick={() => setActiveTab('scan')}
             className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all ${
@@ -366,7 +365,6 @@ export const App: React.FC = () => {
             <span className="text-[11px]">Cargar</span>
           </button>
 
-          {/* Tab 2: Vehículo */}
           <button
             onClick={() => setActiveTab('vehicle')}
             className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all ${
@@ -379,7 +377,6 @@ export const App: React.FC = () => {
             <span className="text-[11px]">Vehículo</span>
           </button>
 
-          {/* Tab 3: Mapa */}
           <button
             onClick={() => setActiveTab('map')}
             className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all ${
@@ -392,7 +389,6 @@ export const App: React.FC = () => {
             <span className="text-[11px]">Mapa</span>
           </button>
 
-          {/* Tab 4: Lista Checklist */}
           <button
             onClick={() => setActiveTab('list')}
             className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all relative ${

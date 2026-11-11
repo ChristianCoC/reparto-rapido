@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { PackageItem, VehicleZone } from '../types';
-import { Truck, MapPin, Hash, Plus, Check, User, FileText, Camera } from 'lucide-react';
+import { Truck, MapPin, Hash, Plus, Check, User, FileText, Camera, Sparkles, ScanText } from 'lucide-react';
 import { geocodeAddress } from '../utils/geo';
 import { feedback } from '../utils/feedback';
+import { ParsedLabelData } from '../utils/labelParser';
 
 interface PackageFormProps {
   initialCode?: string;
+  initialData?: ParsedLabelData | null;
   zones: VehicleZone[];
   onAddPackage: (pkg: PackageItem) => void;
   onOpenScanner: () => void;
@@ -13,6 +15,7 @@ interface PackageFormProps {
 
 export const PackageForm: React.FC<PackageFormProps> = ({
   initialCode = '',
+  initialData,
   zones,
   onAddPackage,
   onOpenScanner
@@ -23,12 +26,59 @@ export const PackageForm: React.FC<PackageFormProps> = ({
   const [notes, setNotes] = useState('');
   const [selectedZoneId, setSelectedZoneId] = useState<string>(zones[0]?.id || '');
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [autoFilled, setAutoFilled] = useState(false);
 
+  // Helper para asignar zona según la letra detectada (A, B, C, D, E)
+  const assignZoneFromLetter = (letter: string) => {
+    const clean = letter.toUpperCase();
+    const matchedZone = zones.find((z) => z.code.startsWith(clean) || z.name.toUpperCase().includes(clean));
+    if (matchedZone) {
+      setSelectedZoneId(matchedZone.id);
+    }
+  };
+
+  // Reaccionar cuando se escanea con código simple
   useEffect(() => {
     if (initialCode) {
       setTrackingNumber(initialCode);
+      // Si el código escrito empieza con una letra (ej: "BD-32" -> "B")
+      const letterMatch = initialCode.replace(/^#/, '').match(/^([A-E])/i);
+      if (letterMatch) {
+        assignZoneFromLetter(letterMatch[1]);
+      }
     }
   }, [initialCode]);
+
+  // Reaccionar cuando el OCR o el QR parsean datos estructurados
+  useEffect(() => {
+    if (initialData) {
+      let codeToUse = initialData.routeCode || initialData.trackingId || '';
+      if (codeToUse) setTrackingNumber(codeToUse);
+
+      if (initialData.address) setAddress(initialData.address);
+      if (initialData.recipient) setRecipient(initialData.recipient);
+      if (initialData.notes) setNotes(initialData.notes);
+
+      if (initialData.zoneLetter) {
+        assignZoneFromLetter(initialData.zoneLetter);
+      } else if (codeToUse) {
+        const letterMatch = codeToUse.replace(/^#/, '').match(/^([A-E])/i);
+        if (letterMatch) assignZoneFromLetter(letterMatch[1]);
+      }
+
+      setAutoFilled(true);
+      setTimeout(() => setAutoFilled(false), 5000);
+    }
+  }, [initialData]);
+
+  // Si el usuario escribe manualmente "BD32", detectar automáticamente la zona B
+  const handleTrackingChange = (val: string) => {
+    setTrackingNumber(val);
+    const letterMatch = val.replace(/^#/, '').match(/^([A-E])/i);
+    if (letterMatch) {
+      assignZoneFromLetter(letterMatch[1]);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +110,7 @@ export const PackageForm: React.FC<PackageFormProps> = ({
     feedback.playScanSuccess();
     onAddPackage(newPackage);
 
-    // Resetear formulario para el siguiente paquete manteniendo la zona o dejándola lista
+    // Resetear formulario
     setTrackingNumber('');
     setAddress('');
     setRecipient('');
@@ -72,31 +122,44 @@ export const PackageForm: React.FC<PackageFormProps> = ({
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
         <h3 className="font-bold text-base flex items-center gap-2 text-slate-800 dark:text-slate-100">
           <Truck className="w-5 h-5 text-brand-600" />
-          Ingreso y Ubicación de Paquete
+          Carga y Ubicación de Paquete
         </h3>
         <button
           type="button"
           onClick={onOpenScanner}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/50 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 rounded-xl text-xs font-semibold border border-brand-200 dark:border-brand-800 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all active:scale-95"
         >
           <Camera className="w-4 h-4" />
-          Escanear Cámara
+          <span>Escanear / OCR</span>
         </button>
       </div>
 
-      {/* Código / Número de paquete */}
+      {/* Notificación de datos auto-rellenados por visión OCR */}
+      {autoFilled && (
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 p-2.5 rounded-xl flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200 animate-in fade-in">
+          <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <span>¡Datos extraídos automáticamente de la etiqueta! Revisa y confirma.</span>
+        </div>
+      )}
+
+      {/* Código / Etiqueta de ruta (#BD-32) */}
       <div>
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-          Código de Paquete (Barras / QR / ID)
-        </label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Etiqueta / Código (ej: #BD-32 o ID)
+          </label>
+          <span className="text-[10px] text-brand-600 dark:text-brand-400 font-semibold">
+            Auto-asigna la zona según la letra
+          </span>
+        </div>
         <div className="relative">
           <Hash className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={trackingNumber}
-            onChange={(e) => setTrackingNumber(e.target.value)}
-            placeholder="Ej: AR982341235 o escanea con la cámara"
-            className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono"
+            onChange={(e) => handleTrackingChange(e.target.value)}
+            placeholder="Ej: #BD-32, 48455648099 o escanea"
+            className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono"
           />
         </div>
       </div>
@@ -104,7 +167,7 @@ export const PackageForm: React.FC<PackageFormProps> = ({
       {/* Selector visual de Zona del Vehículo */}
       <div>
         <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-          Ubicación en el Vehículo
+          Ubicación Asignada en el Vehículo
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {zones.map((zone) => {
@@ -152,13 +215,13 @@ export const PackageForm: React.FC<PackageFormProps> = ({
             type="text"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            placeholder="Ej: Av. Corrientes 1234, CABA"
+            placeholder="Ej: Calle Rivadavia 4616, CP 1650"
             className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
       </div>
 
-      {/* Destinatario y Observaciones (acordeón o campos compactos) */}
+      {/* Destinatario y Observaciones */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
@@ -170,7 +233,7 @@ export const PackageForm: React.FC<PackageFormProps> = ({
               type="text"
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
-              placeholder="Nombre del cliente"
+              placeholder="Ej: Adriana Castaño"
               className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
@@ -178,7 +241,7 @@ export const PackageForm: React.FC<PackageFormProps> = ({
 
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-            Notas / Timbre (Opcional)
+            Referencia / Timbre (Opcional)
           </label>
           <div className="relative">
             <FileText className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -186,7 +249,7 @@ export const PackageForm: React.FC<PackageFormProps> = ({
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ej: Dejar en portería, piso 3B"
+              placeholder="Ej: 3er piso dpto 3"
               className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
