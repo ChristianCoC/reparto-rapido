@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { PackageItem, VehicleZone, DeliveryStatus } from './types';
+import { PackageItem, VehicleZoneId } from './types';
 import { storage } from './utils/storage';
 import { PackageForm } from './components/PackageForm';
-import { ScannerView } from './components/ScannerView';
 import { VehicleMap } from './components/VehicleMap';
 import { DeliveryMap } from './components/DeliveryMap';
 import { PackageList } from './components/PackageList';
 import { EndOfDayModal } from './components/EndOfDayModal';
-import { ParsedLabelData } from './utils/labelParser';
 import {
   Truck,
-  ScanLine,
+  PlusCircle,
   Layers,
   Map as MapIcon,
   CheckSquare,
@@ -21,30 +19,20 @@ import {
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [packages, setPackages] = useState<PackageItem[]>([]);
-  const [zones] = useState<VehicleZone[]>(() => storage.getZones());
-  const [activeTab, setActiveTab] = useState<'scan' | 'vehicle' | 'map' | 'list'>('scan');
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [scannedCode, setScannedCode] = useState<string>('');
-  const [scannedData, setScannedData] = useState<ParsedLabelData | null>(null);
-  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [packages, setPackages] = useState<PackageItem[]>(() => storage.getPackages());
+  const [activeTab, setActiveTab] = useState<'cargar' | 'vehiculo' | 'entregas' | 'mapa'>('cargar');
+  const [selectedZone, setSelectedZone] = useState<VehicleZoneId | null>(null);
   const [isEndOfDayOpen, setIsEndOfDayOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
-  // Cargar paquetes guardados al montar
-  useEffect(() => {
-    const saved = storage.getPackages();
-    setPackages(saved);
-  }, []);
-
-  // Guardar en localStorage cada vez que cambie
+  // Guardar en localStorage de forma reactiva
   useEffect(() => {
     storage.savePackages(packages);
   }, [packages]);
 
-  // Manejar modo oscuro
+  // Modo oscuro
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -56,31 +44,18 @@ export const App: React.FC = () => {
   // Agregar nuevo paquete
   const handleAddPackage = (newPkg: PackageItem) => {
     setPackages((prev) => [newPkg, ...prev]);
-    setScannedCode('');
-    setScannedData(null);
-    setIsScannerOpen(false);
   };
 
-  // Escaneo exitoso (con datos parseados de QR o OCR)
-  const handleScanSuccess = (code: string, parsed?: ParsedLabelData) => {
-    setScannedCode(code);
-    if (parsed) {
-      setScannedData(parsed);
-    }
-    setIsScannerOpen(false);
-    setActiveTab('scan');
-  };
-
-  // Actualizar estado de entrega
-  const handleUpdateStatus = (id: string, status: DeliveryStatus, reason?: string) => {
+  // Alternar entregado / pendiente (sin bugs de conteo)
+  const handleToggleStatus = (id: string) => {
     setPackages((prev) =>
       prev.map((pkg) => {
         if (pkg.id === id) {
+          const isNowDelivered = pkg.status !== 'delivered';
           return {
             ...pkg,
-            status,
-            failureReason: status === 'failed' ? reason : undefined,
-            deliveredAt: status === 'delivered' ? new Date().toISOString() : undefined,
+            status: isNowDelivered ? 'delivered' : 'pending',
+            deliveredAt: isNowDelivered ? new Date().toISOString() : undefined,
           };
         }
         return pkg;
@@ -88,86 +63,49 @@ export const App: React.FC = () => {
     );
   };
 
-  // Eliminar un paquete
+  // Eliminar paquete individual
   const handleDeletePackage = (id: string) => {
     setPackages((prev) => prev.filter((p) => p.id !== id));
   };
 
-  // Limpiar jornada
+  // Limpiar jornada completa
   const handleClearDay = () => {
     storage.clearDay();
     setPackages([]);
-    setSelectedZoneId(null);
+    setSelectedZone(null);
   };
 
-  // Cargar datos de prueba de ejemplo (incluyendo formato tipo Mercado Libre con #BD-32)
-  const handleLoadDemoData = () => {
-    const demoPackages: PackageItem[] = [
-      {
-        id: 'demo-1',
-        trackingNumber: '#BD-32',
-        recipient: 'Adriana Castaño',
-        address: 'Calle Rivadavia 4616, CABA',
-        notes: '3er piso dpto 3',
-        vehicleZoneId: 'zone-front', // Zona B1
-        status: 'pending',
-        scannedAt: new Date().toISOString(),
-        coordinates: { lat: -34.6189, lng: -58.4287 }
-      },
-      {
-        id: 'demo-2',
-        trackingNumber: '#AD-12',
-        recipient: 'Martín Gómez',
-        address: 'Av. Santa Fe 3200, Palermo',
-        notes: 'Piso 4 Departamento B',
-        vehicleZoneId: 'zone-copilot', // Zona A1
-        status: 'pending',
-        scannedAt: new Date().toISOString(),
-        coordinates: { lat: -34.5888, lng: -58.4111 }
-      },
-      {
-        id: 'demo-3',
-        trackingNumber: '#CD-05',
-        recipient: 'Lucía Fernández',
-        address: 'Av. Cabildo 1500, Belgrano',
-        notes: 'Dejar en recepción',
-        vehicleZoneId: 'zone-middle', // Zona C1
-        status: 'pending',
-        scannedAt: new Date().toISOString(),
-        coordinates: { lat: -34.5678, lng: -58.4522 }
-      },
-      {
-        id: 'demo-4',
-        trackingNumber: '#ED-44',
-        recipient: 'Sofía Díaz',
-        address: 'Av. de Mayo 800, Montserrat',
-        notes: 'Llamar antes al timbre',
-        vehicleZoneId: 'zone-back', // Zona E1
-        status: 'pending',
-        scannedAt: new Date().toISOString(),
-        coordinates: { lat: -34.6083, lng: -58.3794 }
-      }
+  // Cargar paquetes de prueba (ejemplo #HH58, #BD32, etc.)
+  const handleLoadDemo = () => {
+    const demo: PackageItem[] = [
+      { id: 'd-1', code: '#HH58', zoneId: 'copiloto', status: 'pending', createdAt: new Date().toISOString() },
+      { id: 'd-2', code: '#BD32', zoneId: 'atras', status: 'pending', createdAt: new Date().toISOString() },
+      { id: 'd-3', code: '#CA14', zoneId: 'atras', status: 'pending', createdAt: new Date().toISOString() },
+      { id: 'd-4', code: '#FZ89', zoneId: 'baul', status: 'pending', createdAt: new Date().toISOString() },
+      { id: 'd-5', code: '#MK02', zoneId: 'baul', status: 'pending', createdAt: new Date().toISOString() },
     ];
-    setPackages(demoPackages);
+    setPackages(demo);
   };
 
+  // Conteo exacto
   const total = packages.length;
   const delivered = packages.filter((p) => p.status === 'delivered').length;
+  const pending = total - delivered;
   const progressPercent = total > 0 ? Math.round((delivered / total) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 pb-24 text-slate-900 dark:text-slate-100 selection:bg-brand-500 selection:text-white">
-      {/* Header Superior Fijo */}
-      <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3">
+      {/* Header Fijo */}
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3">
         <div className="max-w-md mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-md shadow-brand-600/30">
+            <div className="w-9 h-9 rounded-2xl bg-brand-600 flex items-center justify-center text-white shadow-md shadow-brand-600/30">
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="font-extrabold text-sm leading-tight tracking-tight">RepartoRápido</h1>
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                {total === 0 ? 'Vehículo sin carga' : `${delivered} de ${total} entregados (${progressPercent}%)`}
+              <h1 className="font-black text-base leading-tight tracking-tight">RepartoRápido</h1>
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                {total === 0 ? 'Sin carga iniciada' : `${delivered} de ${total} entregados (${pending} pend.)`}
               </p>
             </div>
           </div>
@@ -175,15 +113,15 @@ export const App: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Cambiar tema de color"
+              className="p-2.5 rounded-2xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Cambiar tema"
             >
               {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
             </button>
 
             <button
               onClick={() => setIsEndOfDayOpen(true)}
-              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 transition-colors"
+              className="p-2.5 rounded-2xl text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 transition-colors"
               title="Cierre de jornada"
             >
               <RotateCcw className="w-4 h-4" />
@@ -191,11 +129,12 @@ export const App: React.FC = () => {
           </div>
         </div>
 
+        {/* Barra de progreso */}
         {total > 0 && (
-          <div className="max-w-md mx-auto mt-2.5">
+          <div className="max-w-md mx-auto mt-2">
             <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div
-                className="bg-brand-500 h-full rounded-full transition-all duration-500 ease-out"
+                className="bg-brand-500 h-full rounded-full transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               ></div>
             </div>
@@ -205,77 +144,69 @@ export const App: React.FC = () => {
 
       {/* Contenido Principal */}
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {packages.length === 0 && (
-          <div className="bg-gradient-to-r from-brand-600 to-emerald-700 text-white p-4 rounded-2xl shadow-lg flex items-center justify-between gap-3">
+        {/* Banner de inicio rápido si la app está vacía */}
+        {total === 0 && (
+          <div className="bg-gradient-to-r from-brand-600 to-emerald-700 text-white p-4 rounded-3xl shadow-lg flex items-center justify-between gap-3">
             <div>
-              <h3 className="font-bold text-sm">¿Quieres probar la app de inmediato?</h3>
+              <h3 className="font-black text-sm">¿Probar la app con datos de ejemplo?</h3>
               <p className="text-xs text-brand-100 mt-0.5">
-                Carga 4 paquetes de ejemplo tipo Mercado Libre con etiquetas #BD-32.
+                Carga 5 paquetes rápidos (#HH58, #BD32, etc.) en Copiloto, Atrás y Baúl.
               </p>
             </div>
             <button
-              onClick={handleLoadDemoData}
-              className="px-3 py-2 bg-white text-brand-800 font-bold rounded-xl text-xs hover:bg-brand-50 flex items-center gap-1.5 flex-shrink-0 shadow"
+              onClick={handleLoadDemo}
+              className="px-3.5 py-2.5 bg-white text-brand-900 font-black rounded-2xl text-xs hover:bg-brand-50 flex items-center gap-1.5 flex-shrink-0 shadow"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-              Probar demo
+              Cargar demo
             </button>
           </div>
         )}
 
-        {/* Pestaña 1: Carga y Escaneo */}
-        {activeTab === 'scan' && (
+        {/* 1. Carga Rápida */}
+        {activeTab === 'cargar' && (
           <div className="space-y-4">
-            <PackageForm
-              initialCode={scannedCode}
-              initialData={scannedData}
-              zones={zones}
-              onAddPackage={handleAddPackage}
-              onOpenScanner={() => setIsScannerOpen(true)}
-            />
+            <PackageForm onAddPackage={handleAddPackage} totalCount={total} />
 
-            {packages.length > 0 && (
+            {total > 0 && (
               <VehicleMap
-                zones={zones}
                 packages={packages}
-                selectedZoneId={selectedZoneId}
+                selectedZone={selectedZone}
                 onSelectZone={(z) => {
-                  setSelectedZoneId(z);
-                  setActiveTab('list');
+                  setSelectedZone(z);
+                  setActiveTab('entregas');
                 }}
               />
             )}
           </div>
         )}
 
-        {/* Pestaña 2: Vehículo / Croquis */}
-        {activeTab === 'vehicle' && (
+        {/* 2. Vehículo (Copiloto, Atrás, Baúl) */}
+        {activeTab === 'vehiculo' && (
           <div className="space-y-4">
             <VehicleMap
-              zones={zones}
               packages={packages}
-              selectedZoneId={selectedZoneId}
-              onSelectZone={(z) => setSelectedZoneId(z)}
+              selectedZone={selectedZone}
+              onSelectZone={(z) => setSelectedZone(z)}
             />
 
-            {selectedZoneId && (
-              <div className="pt-2">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-xs uppercase text-slate-500 dark:text-slate-400">
-                    Paquetes en la zona seleccionada
+            {selectedZone && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-black text-xs uppercase text-slate-500 dark:text-slate-400">
+                    Paquetes en {selectedZone.toUpperCase()}
                   </h4>
                   <button
-                    onClick={() => setSelectedZoneId(null)}
-                    className="text-xs font-semibold text-brand-600 dark:text-brand-400"
+                    onClick={() => setSelectedZone(null)}
+                    className="text-xs font-bold text-brand-600 dark:text-brand-400"
                   >
-                    Ver todos
+                    Ver todas las ubicaciones
                   </button>
                 </div>
                 <PackageList
                   packages={packages}
-                  zones={zones}
-                  selectedZoneId={selectedZoneId}
-                  onUpdateStatus={handleUpdateStatus}
+                  selectedZone={selectedZone}
+                  onToggleStatus={handleToggleStatus}
                   onDeletePackage={handleDeletePackage}
                 />
               </div>
@@ -283,64 +214,40 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Pestaña 3: Mapa de Rutas */}
-        {activeTab === 'map' && (
-          <div className="space-y-4">
-            <DeliveryMap packages={packages} zones={zones} />
-            <div className="pt-2">
-              <h4 className="font-bold text-xs uppercase text-slate-500 dark:text-slate-400 mb-2">
-                Listado de Paradas
-              </h4>
-              <PackageList
-                packages={packages}
-                zones={zones}
-                onUpdateStatus={handleUpdateStatus}
-                onDeletePackage={handleDeletePackage}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Pestaña 4: Checklist de Entregas */}
-        {activeTab === 'list' && (
+        {/* 3. Lista de Entregas (Checklist) */}
+        {activeTab === 'entregas' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-base flex items-center gap-2">
+              <h3 className="font-black text-lg flex items-center gap-2">
                 <CheckSquare className="w-5 h-5 text-brand-600" />
-                Checklist de Entregas
+                Control de Entregas
               </h3>
-              {selectedZoneId && (
+              {selectedZone && (
                 <button
-                  onClick={() => setSelectedZoneId(null)}
-                  className="text-xs font-semibold text-brand-600 dark:text-brand-400"
+                  onClick={() => setSelectedZone(null)}
+                  className="text-xs font-bold text-brand-600 dark:text-brand-400"
                 >
-                  Quitar filtro de zona
+                  Filtro: {selectedZone.toUpperCase()} (Quitar)
                 </button>
               )}
             </div>
+
             <PackageList
               packages={packages}
-              zones={zones}
-              selectedZoneId={selectedZoneId}
-              onUpdateStatus={handleUpdateStatus}
+              selectedZone={selectedZone}
+              onToggleStatus={handleToggleStatus}
               onDeletePackage={handleDeletePackage}
             />
           </div>
         )}
-      </main>
 
-      {/* Modal / Overlay del Escáner */}
-      {isScannerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 animate-in fade-in">
-          <div className="w-full max-w-md">
-            <ScannerView
-              onScan={handleScanSuccess}
-              onClose={() => setIsScannerOpen(false)}
-              isModal={true}
-            />
+        {/* 4. Verificador de Mapa */}
+        {activeTab === 'mapa' && (
+          <div className="space-y-4">
+            <DeliveryMap />
           </div>
-        </div>
-      )}
+        )}
+      </main>
 
       {/* Modal de Cierre de Día */}
       <EndOfDayModal
@@ -350,60 +257,64 @@ export const App: React.FC = () => {
         onConfirmClear={handleClearDay}
       />
 
-      {/* Barra de Navegación Inferior Fija */}
+      {/* Navegación Inferior Fija para Repartidores */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 pb-safe">
         <div className="max-w-md mx-auto flex items-center justify-around p-2">
+          {/* Cargar */}
           <button
-            onClick={() => setActiveTab('scan')}
+            onClick={() => setActiveTab('cargar')}
             className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all ${
-              activeTab === 'scan'
-                ? 'text-brand-600 dark:text-brand-400 font-bold scale-105'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 font-medium'
+              activeTab === 'cargar'
+                ? 'text-brand-600 dark:text-brand-400 font-black scale-105'
+                : 'text-slate-500 dark:text-slate-400 font-semibold'
             }`}
           >
-            <ScanLine className="w-5 h-5 mb-0.5" />
+            <PlusCircle className="w-5 h-5 mb-0.5" />
             <span className="text-[11px]">Cargar</span>
           </button>
 
+          {/* Vehículo */}
           <button
-            onClick={() => setActiveTab('vehicle')}
+            onClick={() => setActiveTab('vehiculo')}
             className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all ${
-              activeTab === 'vehicle'
-                ? 'text-brand-600 dark:text-brand-400 font-bold scale-105'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 font-medium'
+              activeTab === 'vehiculo'
+                ? 'text-brand-600 dark:text-brand-400 font-black scale-105'
+                : 'text-slate-500 dark:text-slate-400 font-semibold'
             }`}
           >
             <Layers className="w-5 h-5 mb-0.5" />
             <span className="text-[11px]">Vehículo</span>
           </button>
 
+          {/* Entregas */}
           <button
-            onClick={() => setActiveTab('map')}
-            className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all ${
-              activeTab === 'map'
-                ? 'text-brand-600 dark:text-brand-400 font-bold scale-105'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 font-medium'
-            }`}
-          >
-            <MapIcon className="w-5 h-5 mb-0.5" />
-            <span className="text-[11px]">Mapa</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('list')}
+            onClick={() => setActiveTab('entregas')}
             className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all relative ${
-              activeTab === 'list'
-                ? 'text-brand-600 dark:text-brand-400 font-bold scale-105'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 font-medium'
+              activeTab === 'entregas'
+                ? 'text-brand-600 dark:text-brand-400 font-black scale-105'
+                : 'text-slate-500 dark:text-slate-400 font-semibold'
             }`}
           >
             <CheckSquare className="w-5 h-5 mb-0.5" />
             <span className="text-[11px]">Entregas</span>
-            {total > 0 && (
-              <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-brand-500 text-white text-[9px] font-bold flex items-center justify-center">
-                {total - delivered}
+            {pending > 0 && (
+              <span className="absolute top-1 right-2 w-4 h-4 rounded-full bg-brand-500 text-white text-[9px] font-black flex items-center justify-center">
+                {pending}
               </span>
             )}
+          </button>
+
+          {/* Mapa */}
+          <button
+            onClick={() => setActiveTab('mapa')}
+            className={`flex flex-col items-center py-1.5 px-3 rounded-2xl transition-all ${
+              activeTab === 'mapa'
+                ? 'text-brand-600 dark:text-brand-400 font-black scale-105'
+                : 'text-slate-500 dark:text-slate-400 font-semibold'
+            }`}
+          >
+            <MapIcon className="w-5 h-5 mb-0.5" />
+            <span className="text-[11px]">Mapa</span>
           </button>
         </div>
       </nav>
