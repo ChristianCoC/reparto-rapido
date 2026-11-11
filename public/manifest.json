@@ -1,0 +1,17 @@
+{
+  "name": "RepartoRápido - Control de Envíos",
+  "short_name": "RepartoRápido",
+  "description": "Aplicación web ligera para escaneo, distribución en vehículo y reparto",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

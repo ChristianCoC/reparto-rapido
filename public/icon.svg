@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="128" fill="#16a34a"/>
+  <!-- Truck symbol in white -->
+  <path d="M120 180h180v140H120z" fill="white" opacity="0.95"/>
+  <path d="M300 220h70l40 45v55h-110z" fill="white" opacity="0.95"/>
+  <circle cx="180" cy="340" r="35" fill="#0f172a" stroke="white" stroke-width="12"/>
+  <circle cx="350" cy="340" r="35" fill="#0f172a" stroke="white" stroke-width="12"/>
+  <path d="M220 130l20 25h-40z" fill="#facc15"/>
+</svg>
